@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Lumini – Gestão de Carreira, Folha e Faltas</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<div id="page-login" class="page active">
+  <div class="login-bg">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="logo-icon"><i class="fas fa-chart-line"></i></div>
+        <h1>Lumini</h1>
+        <p>Gestão de Carreira, Folha Mensal &amp; Absenteísmo</p>
+      </div>
+
+      <form class="login-form" onsubmit="doLogin(); return false;">
+        <div class="form-group">
+          <label><i class="fas fa-envelope"></i> E-mail</label>
+          <input type="email" id="login-email" placeholder="seu@email.com" autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Senha</label>
+          <div class="input-icon-right">
+            <input type="password" id="login-password" autocomplete="current-password" />
+            <i class="fas fa-eye toggle-pass" onclick="togglePass()"></i>
+          </div>
+        </div>
+        <div id="login-error" class="login-error hidden">E-mail ou senha incorretos.</div>
+        <button type="submit" class="btn-primary btn-full">
+          <i class="fas fa-sign-in-alt"></i> Entrar
+        </button>
+      </form>
+
+      <div class="login-hints">
+        <h4>Contas demo</h4>
+        <p><strong>RH:</strong> samuelbandez@lumini.com / 123456</p>
+        <p><strong>Supervisor:</strong> danielsoares@lumini.com / 123456</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header class="topbar">
+    <button class="menu-toggle" onclick="toggleSidebar()">
+      <i class="fas fa-bars"></i>
+    </button>
+    <div class="topbar-brand">
+      <i class="fas fa-chart-line"></i>
+      <span>Lumini</span>
+    </div>
+    <div class="topbar-right">
+      <div id="firebase-status" class="sync-badge local">
+        <i class="fas fa-database"></i><span>Modo local</span>
+      </div>
+      <div class="notif-badge" id="notif-badge" onclick="goToDefaultPayrollPage()">
+        <i class="fas fa-bell"></i>
+        <span class="badge-count" id="badge-count">0</span>
+      </div>
+      <div class="user-avatar" onclick="toggleUserMenu()">
+        <span id="user-initials">US</span>
+      </div>
+      <div class="user-menu hidden" id="user-menu">
+        <div class="user-menu-name" id="user-menu-name">Usuário</div>
+        <div class="user-menu-role" id="user-menu-role">Perfil</div>
+        <hr/>
+        <a href="#" onclick="syncAllNow()"><i class="fas fa-rotate"></i> Sincronizar agora</a>
+        <a href="#" onclick="doLogout()"><i class="fas fa-sign-out-alt"></i> Sair</a>
+      </div>
+    </div>
+  </header>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-overlay" onclick="closeSidebar()"></div>
+    <nav class="sidebar-nav">
+      <div id="menu-admin" class="menu-group hidden">
+        <div class="menu-label">ADMINISTRADOR / RH</div>
+        <a class="nav-item" data-page="admin-dashboard" onclick="navigateTo('admin-dashboard')"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+        <a class="nav-item" data-page="admin-employees" onclick="navigateTo('admin-employees')"><i class="fas fa-users"></i> Funcionários</a>
+        <a class="nav-item" data-page="admin-payroll" onclick="navigateTo('admin-payroll')"><i class="fas fa-file-invoice-dollar"></i> Folhas &amp; Faltas</a>
+      </div>
+
+      <div id="menu-supervisor" class="menu-group hidden">
+        <div class="menu-label">SUPERVISOR</div>
+        <a class="nav-item" data-page="supervisor-home" onclick="navigateTo('supervisor-home')"><i class="fas fa-home"></i> Meu Painel</a>
+        <a class="nav-item" data-page="supervisor-employees" onclick="navigateTo('supervisor-employees')"><i class="fas fa-users"></i> Minha Equipe</a>
+        <a class="nav-item" data-page="supervisor-payroll" onclick="navigateTo('supervisor-payroll')"><i class="fas fa-file-invoice-dollar"></i> Conferência Mensal</a>
+      </div>
+
+      <div class="sidebar-footer">
+        <a href="#" onclick="doLogout()" class="nav-item logout-item">
+          <i class="fas fa-sign-out-alt"></i> Sair
+        </a>
+      </div>
+    </nav>
+  </aside>
+
+  <main class="main-content">
+    <div id="page-admin-dashboard" class="page-section hidden">
+      <div class="page-header">
+        <div>
+          <h2><i class="fas fa-tachometer-alt"></i> Dashboard RH</h2>
+          <span class="page-sub">Resumo geral de equipe, folha mensal e faltas por usuário</span>
+        </div>
+        <button class="btn-outline" onclick="syncAllNow()"><i class="fas fa-rotate"></i> Sincronizar</button>
+      </div>
+
+      <div class="cards-grid dashboard-4">
+        <div class="stat-card blue">
+          <div class="stat-icon"><i class="fas fa-users"></i></div>
+          <div class="stat-info"><span class="stat-value" id="stat-total-employees">0</span><span class="stat-label">Funcionários</span></div>
+        </div>
+        <div class="stat-card orange">
+          <div class="stat-icon"><i class="fas fa-file-circle-check"></i></div>
+          <div class="stat-info"><span class="stat-value" id="stat-payroll-pending">0</span><span class="stat-label">Folhas Pendentes</span></div>
+        </div>
+        <div class="stat-card yellow">
+          <div class="stat-icon"><i class="fas fa-user-clock"></i></div>
+          <div class="stat-info"><span class="stat-value" id="stat-absences-month">0</span><span class="stat-label">Faltas no Mês</span></div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-icon"><i class="fas fa-check-double"></i></div>
+          <div class="stat-info"><span class="stat-value" id="stat-verified-month">0</span><span class="stat-label">Folhas Conferidas</span></div>
+        </div>
+      </div>
+
+      <div class="dashboard-row two-col">
+        <div class="chart-card">
+          <h3><i class="fas fa-chart-bar"></i> Funcionários por Status</h3>
+          <div class="chart-wrap"><canvas id="chart-status"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3><i class="fas fa-chart-doughnut"></i> Conferência de Folha</h3>
+          <div class="chart-wrap"><canvas id="chart-payroll"></canvas></div>
+        </div>
+      </div>
+
+      <div class="dashboard-row two-col">
+        <div class="recent-card">
+          <h3><i class="fas fa-user-times"></i> Funcionários com faltas no mês</h3>
+          <div id="dashboard-absence-list" class="recent-list"></div>
+        </div>
+        <div class="recent-card">
+          <h3><i class="fas fa-file-invoice"></i> Folhas aguardando conferência</h3>
+          <div id="dashboard-payroll-pending-list" class="recent-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="page-admin-employees" class="page-section hidden">
+      <div class="page-header">
+        <div>
+          <h2><i class="fas fa-users"></i> Gestão de Funcionários</h2>
+          <span class="page-sub">Cadastro individual, vínculo com supervisor e salário-base</span>
+        </div>
+        <button class="btn-primary" onclick="openAddEmployee()"><i class="fas fa-plus"></i> Novo Funcionário</button>
+      </div>
+
+      <div class="filter-row">
+        <div class="search-bar grow">
+          <i class="fas fa-search"></i>
+          <input type="text" id="search-employees" placeholder="Buscar por nome, setor ou cargo..." oninput="renderEmployeesTable()" />
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Funcionário</th>
+              <th>Supervisor</th>
+              <th>Cargo Atual → Desejado</th>
+              <th>Salário Base</th>
+              <th>Status</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="employees-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="page-admin-payroll" class="page-section hidden">
+      <div class="page-header">
+        <div>
+          <h2><i class="fas fa-file-invoice-dollar"></i> Folhas de Pagamento &amp; Faltas</h2>
+          <span class="page-sub">Verificação mensal por funcionário com status de conferência</span>
+        </div>
+        <button class="btn-primary" onclick="openAddPayroll()"><i class="fas fa-plus"></i> Nova Folha</button>
+      </div>
+
+      <div class="filter-row">
+        <div class="form-group compact">
+          <label>Mês</label>
+          <input type="month" id="admin-payroll-month" onchange="renderAdminPayroll()" />
+        </div>
+        <div class="form-group compact">
+          <label>Supervisor</label>
+          <select id="admin-payroll-supervisor" onchange="renderAdminPayroll()"></select>
+        </div>
+        <div class="form-group compact grow">
+          <label>Funcionário</label>
+          <input type="text" id="admin-payroll-search" placeholder="Buscar funcionário..." oninput="renderAdminPayroll()" />
+        </div>
+      </div>
+
+      <div id="admin-payroll-summary" class="mini-kpis"></div>
+      <div id="admin-payroll-list" class="payroll-grid"></div>
+    </div>
+
+    <div id="page-supervisor-home" class="page-section hidden">
+      <div class="page-header">
+        <div>
+          <h2><i class="fas fa-home"></i> Meu Painel</h2>
+          <span class="page-sub" id="supervisor-greeting">Olá!</span>
+        </div>
+      </div>
+
+      <div id="supervisor-alert" class="alert-banner hidden">
+        <i class="fas fa-bell"></i>
+        <span id="supervisor-alert-text"></span>
+      </div>
+
+      <div class="cards-grid cards-grid-3">
+        <div class="stat-card blue">
+          <div class="stat-icon"><i class="fas fa-users"></i></div>
+          <div class="stat-info"><span class="stat-value" id="sup-total-team">0</span><span class="stat-label">Minha Equipe</span></div>
+        </div>
+        <div class="stat-card orange">
+          <div class="stat-icon"><i class="fas fa-file-circle-exclamation"></i></div>
+          <div class="stat-info"><span class="stat-value" id="sup-payroll-pending">0</span><span class="stat-label">Folhas Pendentes</span></div>
+        </div>
+        <div class="stat-card yellow">
+          <div class="stat-icon"><i class="fas fa-user-clock"></i></div>
+          <div class="stat-info"><span class="stat-value" id="sup-absences-month">0</span><span class="stat-label">Faltas no Mês</span></div>
+        </div>
+      </div>
+
+      <div class="dashboard-row two-col">
+        <div class="recent-card">
+          <h3><i class="fas fa-list-check"></i> Folhas para conferência</h3>
+          <div id="sup-pending-payrolls" class="recent-list"></div>
+        </div>
+        <div class="recent-card">
+          <h3><i class="fas fa-user-minus"></i> Funcionários com faltas</h3>
+          <div id="sup-absence-employees" class="recent-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="page-supervisor-employees" class="page-section hidden">
+      <div class="page-header">
+        <div>
+          <h2><i class="fas fa-users"></i> Minha Equipe</h2>
+          <span class="page-sub">Visão individual de cada colaborador da sua gestão</span>
+        </div>
+      </div>
+      <div id="sup-team-list" class="employee-cards-list"></div>
+    </div>
+
+    <div id="page-supervisor-payroll" class="page-section hidden">
+      <div class="page-header">
+        <div>
+          <h2><i class="fas fa-file-invoice-dollar"></i> Conferência Mensal</h2>
+          <span class="page-sub">Folha, horas extras e faltas somente da sua equipe</span>
+        </div>
+      </div>
+
+      <div class="filter-row">
+        <div class="form-group compact">
+          <label>Mês</label>
+          <input type="month" id="supervisor-payroll-month" onchange="renderSupervisorPayroll()" />
+        </div>
+        <div class="form-group compact grow">
+          <label>Funcionário</label>
+          <select id="supervisor-payroll-employee" onchange="renderSupervisorPayroll()"></select>
+        </div>
+      </div>
+
+      <div id="supervisor-payroll-summary" class="mini-kpis"></div>
+      <div id="supervisor-payroll-list" class="payroll-grid"></div>
+    </div>
+  </main>
+</div>
+
+<div id="modal-employee" class="modal-overlay hidden" onclick="closeModalOverlay(event, 'modal-employee')">
+  <div class="modal-box modal-large">
+    <div class="modal-header">
+      <h3 id="modal-employee-title">Novo Funcionário</h3>
+      <button class="modal-close" onclick="closeModal('modal-employee')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="emp-id" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nome Completo *</label>
+          <input type="text" id="emp-name" required />
+        </div>
+        <div class="form-group">
+          <label>Setor *</label>
+          <input type="text" id="emp-sector" required />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cargo Atual *</label>
+          <input type="text" id="emp-current-role" required />
+        </div>
+        <div class="form-group">
+          <label>Cargo Desejado *</label>
+          <input type="text" id="emp-desired-role" required />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Data de Admissão *</label>
+          <input type="date" id="emp-admission" required />
+        </div>
+        <div class="form-group">
+          <label>Tempo Mínimo para Avaliação *</label>
+          <input type="number" id="emp-min-months" min="1" required />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Supervisor Responsável *</label>
+          <select id="emp-supervisor"></select>
+        </div>
+        <div class="form-group">
+          <label>Salário Base (R$) *</label>
+          <input type="number" id="emp-base-salary" min="0" step="0.01" required />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-employee')">Cancelar</button>
+      <button class="btn-primary" onclick="saveEmployee()"><i class="fas fa-save"></i> Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-employee-view" class="modal-overlay hidden" onclick="closeModalOverlay(event, 'modal-employee-view')">
+  <div class="modal-box modal-large">
+    <div class="modal-header">
+      <h3>Detalhes do Funcionário</h3>
+      <button class="modal-close" onclick="closeModal('modal-employee-view')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="modal-employee-view-body"></div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-employee-view')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-payroll" class="modal-overlay hidden" onclick="closeModalOverlay(event, 'modal-payroll')">
+  <div class="modal-box modal-large">
+    <div class="modal-header">
+      <h3 id="modal-payroll-title">Nova Folha</h3>
+      <button class="modal-close" onclick="closeModal('modal-payroll')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="payroll-id" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Funcionário *</label>
+          <select id="payroll-employee"></select>
+        </div>
+        <div class="form-group">
+          <label>Mês de Referência *</label>
+          <input type="month" id="payroll-month" required />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Salário Base *</label>
+          <input type="number" id="payroll-base-salary" min="0" step="0.01" required />
+        </div>
+        <div class="form-group">
+          <label>Salário Líquido *</label>
+          <input type="number" id="payroll-net-salary" min="0" step="0.01" required />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Bonificações</label>
+          <input type="number" id="payroll-bonuses" min="0" step="0.01" />
+        </div>
+        <div class="form-group">
+          <label>Descontos</label>
+          <input type="number" id="payroll-deductions" min="0" step="0.01" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Horas Extras</label>
+          <input type="number" id="payroll-overtime" min="0" step="1" />
+        </div>
+        <div class="form-group">
+          <label>Faltas</label>
+          <input type="number" id="payroll-absences" min="0" step="1" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Faltas Justificadas</label>
+          <input type="number" id="payroll-justified-absences" min="0" step="1" />
+        </div>
+        <div class="form-group">
+          <label>Status da Conferência</label>
+          <select id="payroll-status">
+            <option value="pendente">Pendente</option>
+            <option value="conferido">Conferido</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Observações</label>
+        <textarea id="payroll-notes" rows="4" placeholder="Ex.: validar descontos, falta médica, ajuste de banco de horas..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modal-payroll')">Cancelar</button>
+      <button class="btn-primary" onclick="savePayrollRecord()"><i class="fas fa-save"></i> Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script src="js/data.js"></script>
+<script src="js/firebase.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
