@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .db-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .db-table th, .db-table td {
+      border: 1px solid #e5e7eb;
+      padding: 8px 12px;
+      text-align: left;
+      background: white;
+    }
+    .db-table th {
+      background: #f9fafb;
+      font-weight: 600;
+      color: #1a1a2e;
+    }
+    .modal-large .modal-content {
+      width: 95%;
+      max-width: 1200px;
+    }
+    .inline-edit {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .inline-edit input, .inline-edit textarea {
+      padding: 4px 8px;
+      font-size: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+    }
+    .inline-edit button {
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+    .action-icons i {
+      cursor: pointer;
+      margin: 0 4px;
+      font-size: 14px;
+    }
+    .action-icons i.fa-edit:hover { color: #4f46e5; }
+    .action-icons i.fa-trash-alt:hover { color: #dc2626; }
+    .action-icons i.fa-save:hover { color: #10b981; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="dashboard-header">
+    <h1><i class="fas fa-user-astronaut"></i> Welcome, <span id="username-display"></span>!</h1>
+    <div>
+      <button id="view-db-btn" class="btn-secondary" style="margin-right: 10px; display: none;"><i class="fas fa-database"></i> View Database</button>
+      <button id="logout-btn" class="btn-secondary"><i class="fas fa-sign-out-alt"></i> Logout</button>
+    </div>
+  </div>
+
+  <!-- Admin upload card -->
+  <div id="admin-upload-card" class="card" style="margin-bottom: 30px; display: none;">
+    <h2><i class="fas fa-cloud-upload-alt"></i> Upload File with Description</h2>
+    <div class="form-group">
+      <label for="target-user-file">Upload for user:</label>
+      <select id="target-user-file"></select>
+    </div>
+    <form id="file-upload-form" enctype="multipart/form-data">
+      <div class="form-group">
+        <label for="file-input">Choose file (max 5MB, jpg/png/gif/pdf/txt)</label>
+        <input type="file" id="file-input" accept=".jpg,.jpeg,.png,.gif,.pdf,.txt">
+      </div>
+      <div class="form-group">
+        <label for="file-description">Description (optional but recommended)</label>
+        <textarea id="file-description" rows="3" placeholder="Add a note, summary, or instructions about this file..."></textarea>
+      </div>
+      <button type="submit" class="btn-primary"><i class="fas fa-cloud-upload-alt"></i> Upload File</button>
+    </form>
+    <div id="file-upload-message" class="info-message"></div>
+  </div>
+
+  <!-- Files view with visualizer -->
+  <div class="card">
+    <h2><i class="fas fa-file-alt"></i> Files
+      <button class="refresh-btn" id="refresh-files"><i class="fas fa-sync-alt"></i> Refresh</button>
+    </h2>
+    <div id="file-filter-controls" style="display: none;">
+      <div class="form-group">
+        <label for="file-filter-user">Filter by user:</label>
+        <select id="file-filter-user"><option value="all">All users</option></select>
+      </div>
+    </div>
+    <div id="file-list" class="data-list"><div class="loading">Loading files...</div></div>
+  </div>
+</div>
+
+<!-- Modal for file visualizer -->
+<div id="fileModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modal-title">File Viewer</h3>
+      <span class="close-modal">&times;</span>
+    </div>
+    <div id="modal-body" class="viewer-area">Loading...</div>
+  </div>
+</div>
+
+<!-- Modal for database view (admin only) -->
+<div id="dbModal" class="modal modal-large">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3><i class="fas fa-database"></i> Database Contents (Admin)</h3>
+      <span class="close-db-modal">&times;</span>
+    </div>
+    <div id="db-body" class="viewer-area" style="overflow: auto;">Loading database...</div>
+  </div>
+</div>
+
+<script>
+  const token = localStorage.getItem('token');
+  const isAdmin = localStorage.getItem('is_admin') === 'true';
+  if (!token) window.location.href = '/';
+
+  document.getElementById('username-display').innerText = localStorage.getItem('username');
+
+  // File viewer modal
+  const fileModal = document.getElementById('fileModal');
+  const modalTitle = document.getElementById('modal-title');
+  const modalBody = document.getElementById('modal-body');
+  const closeModal = document.querySelector('#fileModal .close-modal');
+  closeModal.onclick = () => fileModal.style.display = 'none';
+
+  // Database modal
+  const dbModal = document.getElementById('dbModal');
+  const dbBody = document.getElementById('db-body');
+  const closeDbModal = document.querySelector('#dbModal .close-db-modal');
+  closeDbModal.onclick = () => dbModal.style.display = 'none';
+
+  window.onclick = (e) => {
+    if (e.target === fileModal) fileModal.style.display = 'none';
+    if (e.target === dbModal) dbModal.style.display = 'none';
+  };
+
+  function viewFile(file) {
+    modalTitle.innerText = file.original_name;
+    const fileUrl = `/uploads/${file.filename}`;
+    const fileType = file.mime_type;
+    modalBody.innerHTML = '';
+    if (fileType === 'application/pdf') {
+      const iframe = document.createElement('iframe');
+      iframe.src = fileUrl;
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      modalBody.appendChild(iframe);
+    } else if (fileType.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.src = fileUrl;
+      img.style.maxWidth = '100%';
+      img.style.maxHeight = '100%';
+      modalBody.appendChild(img);
+    } else if (fileType === 'text/plain') {
+      fetch(fileUrl)
+        .then(res => res.text())
+        .then(text => {
+          const pre = document.createElement('pre');
+          pre.textContent = text;
+          modalBody.appendChild(pre);
+        })
+        .catch(err => modalBody.innerHTML = `<div class="error">Failed to load text: ${err}</div>`);
+    } else {
+      modalBody.innerHTML = `<div class="empty-state">Preview not available. <a href="${fileUrl}" download>Download</a> to view locally.</div>`;
+    }
+    fileModal.style.display = 'block';
+  }
+
+  // ---- Database viewer with inline editing ----
+  async function viewDatabase() {
+    dbBody.innerHTML = '<div class="loading">Loading database...</div>';
+    dbModal.style.display = 'block';
+    try {
+      const res = await authFetch('/api/database');
+      if (!res) return;
+      const data = await res.json();
+      renderDatabaseTables(data);
+    } catch (err) {
+      dbBody.innerHTML = `<div class="error">Failed to load database: ${err.message}</div>`;
+    }
+  }
+
+  function renderDatabaseTables(data) {
+    let html = '<h3 style="margin-bottom: 15px;">Users</h3>';
+    html += '<table class="db-table" id="users-table">';
+    html += '<thead><tr><th>ID</th><th>Username</th><th>Admin</th><th>Created At</th><th>Actions</th></tr></thead><tbody>';
+    data.users.forEach(user => {
+      html += `<tr data-user-id="${user.id}">
+        <td>${user.id}</td>
+        <td>${escapeHtml(user.username)}</td>
+        <td class="admin-status">${user.is_admin ? 'Yes' : 'No'}</td>
+        <td>${new Date(user.created_at).toLocaleString()}</td>
+        <td class="action-icons">
+          <i class="fas fa-edit edit-user" data-id="${user.id}" data-admin="${user.is_admin}" style="cursor:pointer;" title="Toggle admin"></i>
+          <i class="fas fa-trash-alt delete-user" data-id="${user.id}" style="cursor:pointer; color:#dc2626;" title="Delete user"></i>
+        </td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+
+    html += '<h3 style="margin-top: 30px; margin-bottom: 15px;">Files</h3>';
+    html += '<table class="db-table" id="files-table">';
+    html += '<thead><tr><th>ID</th><th>User</th><th>Filename</th><th>Type</th><th>Size (KB)</th><th>Description</th><th>Uploaded</th><th>Actions</th></tr></thead><tbody>';
+    data.files.forEach(file => {
+      html += `<tr data-file-id="${file.id}">
+        <td>${file.id}</td>
+        <td>${escapeHtml(file.username)} (ID: ${file.user_id})</td>
+        <td>${escapeHtml(file.original_name)}</td>
+        <td>${file.mime_type}</td>
+        <td>${(file.size / 1024).toFixed(1)}</td>
+        <td class="file-desc">${escapeHtml(file.description || '—')}</td>
+        <td>${new Date(file.created_at).toLocaleString()}</td>
+        <td class="action-icons">
+          <i class="fas fa-edit edit-file" data-id="${file.id}" data-desc="${escapeAttr(file.description || '')}" style="cursor:pointer;" title="Edit description"></i>
+          <i class="fas fa-trash-alt delete-file" data-id="${file.id}" style="cursor:pointer; color:#dc2626;" title="Delete file"></i>
+        </td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    dbBody.innerHTML = html;
+
+    // Attach event listeners for inline actions
+    attachUserActions();
+    attachFileActions();
+  }
+
+  function attachUserActions() {
+    // Toggle admin
+    document.querySelectorAll('.edit-user').forEach(icon => {
+      icon.addEventListener('click', async (e) => {
+        const userId = icon.dataset.id;
+        const currentAdmin = icon.dataset.admin === '1' || icon.dataset.admin === 'true';
+        const newAdmin = !currentAdmin;
+        const res = await authFetch(`/api/users/${userId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ is_admin: newAdmin })
+        });
+        if (res && res.ok) {
+          // Refresh the database view
+          viewDatabase();
+          // Also refresh the user list in the upload dropdowns
+          if (typeof loadUsers === 'function') loadUsers();
+        } else {
+          alert('Failed to update user');
+        }
+      });
+    });
+
+    // Delete user
+    document.querySelectorAll('.delete-user').forEach(icon => {
+      icon.addEventListener('click', async (e) => {
+        if (!confirm('Delete this user? All their files will also be deleted.')) return;
+        const userId = icon.dataset.id;
+        const res = await authFetch(`/api/users/${userId}`, { method: 'DELETE' });
+        if (res && res.ok) {
+          viewDatabase();
+          if (typeof loadUsers === 'function') loadUsers();
+          loadFiles(); // refresh file list
+        } else {
+          alert('Failed to delete user');
+        }
+      });
+    });
+  }
+
+  function attachFileActions() {
+    // Edit file description inline
+    document.querySelectorAll('.edit-file').forEach(icon => {
+      icon.addEventListener('click', (e) => {
+        const fileId = icon.dataset.id;
+        const currentDesc = icon.dataset.desc;
+        const row = icon.closest('tr');
+        const descCell = row.querySelector('.file-desc');
+        // Replace cell with inline editor
+        descCell.innerHTML = `
+          <div class="inline-edit">
+            <textarea rows="2" style="width:200px;" id="desc-edit-${fileId}">${escapeHtml(currentDesc)}</textarea>
+            <button class="save-desc" data-id="${fileId}">Save</button>
+            <button class="cancel-edit">Cancel</button>
+          </div>
+        `;
+        const saveBtn = descCell.querySelector('.save-desc');
+        const cancelBtn = descCell.querySelector('.cancel-edit');
+        saveBtn.addEventListener('click', async () => {
+          const newDesc = document.getElementById(`desc-edit-${fileId}`).value.trim();
+          const res = await authFetch(`/api/files/${fileId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ description: newDesc || null })
+          });
+          if (res && res.ok) {
+            viewDatabase(); // refresh whole modal
+            loadFiles();    // refresh main file list
+          } else {
+            alert('Failed to update description');
+          }
+        });
+        cancelBtn.addEventListener('click', () => viewDatabase());
+      });
+    });
+
+    // Delete file
+    document.querySelectorAll('.delete-file').forEach(icon => {
+      icon.addEventListener('click', async (e) => {
+        if (!confirm('Delete this file?')) return;
+        const fileId = icon.dataset.id;
+        const res = await authFetch(`/api/files/${fileId}`, { method: 'DELETE' });
+        if (res && res.ok) {
+          viewDatabase();
+          loadFiles();
+        } else {
+          alert('Failed to delete file');
+        }
+      });
+    });
+  }
+
+  // ---- Regular authFetch and UI functions ----
+  async function authFetch(url, opts = {}) {
+    const headers = { 'Authorization': `Bearer ${token}`, ...opts.headers };
+    const res = await fetch(url, { ...opts, headers });
+    if (res.status === 401 || res.status === 403) {
+      localStorage.clear();
+      window.location.href = '/';
+      return null;
+    }
+    return res;
+  }
+
+  async function loadUsers() {
+    if (!isAdmin) return;
+    const res = await authFetch('/api/users');
+    if (!res) return;
+    const users = await res.json();
+    const selects = ['target-user-file', 'file-filter-user'];
+    selects.forEach(id => {
+      const sel = document.getElementById(id);
+      if (sel) {
+        sel.innerHTML = id.includes('filter') ? '<option value="all">All users</option>' : '<option value="">-- Select user --</option>';
+        users.forEach(u => {
+          sel.innerHTML += `<option value="${u.id}">${escapeHtml(u.username)}</option>`;
+        });
+      }
+    });
+    if (isAdmin) document.getElementById('file-filter-controls').style.display = 'block';
+  }
+
+  async function loadFiles() {
+    const container = document.getElementById('file-list');
+    container.innerHTML = '<div class="loading">Loading files...</div>';
+    let url = '/api/files';
+    if (isAdmin && document.getElementById('file-filter-user')?.value !== 'all') {
+      const uid = document.getElementById('file-filter-user').value;
+      if (uid) url += `?userId=${uid}`;
+    }
+    try {
+      const res = await authFetch(url);
+      if (!res) return;
+      const files = await res.json();
+      if (!files.length) { 
+        container.innerHTML = '<div class="empty-state">No files found.</div>'; 
+        return; 
+      }
+      container.innerHTML = files.map(file => `
+        <div class="data-card">
+          <div class="data-title"><i class="fas fa-file"></i> ${escapeHtml(file.original_name)}</div>
+          <div class="data-content">
+            <i class="fas fa-database"></i> ${(file.size / 1024).toFixed(1)} KB · ${file.mime_type}<br>
+            <i class="far fa-clock"></i> ${new Date(file.created_at).toLocaleString()}
+            ${file.username ? `<br><i class="fas fa-user"></i> ${escapeHtml(file.username)}` : ''}
+            ${file.description ? `<div class="description-text"><i class="fas fa-comment"></i> <strong>Description:</strong><br>${escapeHtml(file.description)}</div>` : ''}
+          </div>
+          <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn-secondary view-btn" data-file='${JSON.stringify(file)}' style="background:#e0e7ff; color:#4f46e5; border:none;"><i class="fas fa-eye"></i> View</button>
+            <a href="/uploads/${file.filename}" target="_blank" class="btn-secondary" style="background:#e0e7ff; color:#4f46e5; border:none;"><i class="fas fa-download"></i> Download</a>
+            ${isAdmin ? `<button class="btn-secondary delete-file-btn" data-id="${file.id}" style="background:#fee2e2; color:#dc2626; border:none;"><i class="fas fa-trash"></i> Delete</button>` : ''}
+          </div>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('.view-btn').forEach(btn => {
+        const fileData = JSON.parse(btn.dataset.file);
+        btn.addEventListener('click', () => viewFile(fileData));
+      });
+      if (isAdmin) {
+        document.querySelectorAll('.delete-file-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Delete this file?')) return;
+            const id = btn.dataset.id;
+            const res = await authFetch(`/api/files/${id}`, { method: 'DELETE' });
+            if (res && res.ok) loadFiles();
+          });
+        });
+      }
+    } catch (err) {
+      container.innerHTML = '<div class="error">Error loading files.</div>';
+    }
+  }
+
+  // Admin upload
+  if (isAdmin) {
+    document.getElementById('admin-upload-card').style.display = 'block';
+    document.getElementById('view-db-btn').style.display = 'inline-block';
+    document.getElementById('view-db-btn').addEventListener('click', viewDatabase);
+    
+    document.getElementById('file-upload-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const userId = document.getElementById('target-user-file').value;
+      const fileInput = document.getElementById('file-input');
+      const description = document.getElementById('file-description').value.trim();
+      if (!userId) return alert('Select a user');
+      if (!fileInput.files.length) return alert('Select a file');
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      formData.append('userId', userId);
+      if (description) formData.append('description', description);
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      if (res.ok) {
+        document.getElementById('file-upload-message').innerText = 'File uploaded!';
+        setTimeout(() => document.getElementById('file-upload-message').innerText = '', 3000);
+        fileInput.value = '';
+        document.getElementById('file-description').value = '';
+        loadFiles();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Upload failed');
+      }
+    });
+  }
+
+  document.getElementById('refresh-files')?.addEventListener('click', loadFiles);
+
+  function escapeHtml(str) { return String(str).replace(/[&<>]/g, m => m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'); }
+  function escapeAttr(str) { return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  if (isAdmin) {
+    loadUsers().then(() => {
+      document.getElementById('file-filter-user').addEventListener('change', () => loadFiles());
+      loadFiles();
+    });
+  } else {
+    loadFiles();
+  }
+
+  document.getElementById('logout-btn').addEventListener('click', () => {
+    localStorage.clear();
+    window.location.href = '/';
+  });
+</script>
+</body>
+</html>
